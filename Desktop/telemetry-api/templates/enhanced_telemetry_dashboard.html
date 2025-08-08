@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enhanced Telemetry Dashboard 2</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --primary: #00ff9d;
+      --primary-dark: #00cc7d;
+      --bg-dark: #0a0a0a;
+      --bg-card: rgba(0, 255, 157, 0.15);
+      --text: #ffffff;
+      --border: rgba(0, 255, 157, 0.2);
+      --shadow: rgba(0, 255, 157, 0.2);
+      --shadow-hover: rgba(0, 255, 157, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #particles-js {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      z-index: -1;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 0.5rem;
+      padding: 0.75rem;
+      height: 100vh;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 0.75rem;
+      box-shadow: 0 2px 8px var(--shadow);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(6px);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px var(--shadow-hover);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .icon {
+      color: var(--primary);
+      width: 16px;
+      height: 16px;
+    }
+
+    .metric {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-shadow: 0 0 8px rgba(0, 255, 157, 0.3);
+    }
+
+    .metric.enlarged {
+      font-size: 2rem;
+      transform: scale(1.1);
+      transition: all 0.3s ease;
+    }
+
+    .unit {
+      font-size: 0.7rem;
+      color: var(--primary-dark);
+      margin-left: 0.2rem;
+    }
+
+    /* Status indicators */
+    .status-safe { color: #22c55e; }
+    .status-warning { color: #eab308; }
+    .status-danger { color: #ef4444; }
+    .status-offline { color: #6b7280; }
+
+    .status-bg-safe { 
+      background: rgba(34, 197, 94, 0.15); 
+      border-color: rgba(34, 197, 94, 0.3); 
+    }
+    .status-bg-warning { 
+      background: rgba(234, 179, 8, 0.15); 
+      border-color: rgba(234, 179, 8, 0.3); 
+    }
+    .status-bg-danger { 
+      background: rgba(239, 68, 68, 0.15); 
+      border-color: rgba(239, 68, 68, 0.3); 
+    }
+    .status-bg-offline { 
+      background: rgba(107, 114, 128, 0.15); 
+      border-color: rgba(107, 114, 128, 0.3); 
+    }
+
+    /* Connection status indicator */
+    .connection-status {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .connection-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Map Container */
+    .map-container {
+      grid-column: span 4;
+      grid-row: span 2;
+    }
+
+    #map {
+      height: calc(100% - 40px);
+      border-radius: 6px;
+      z-index: 1;
+    }
+
+    /* 3D Satellite Container */
+    .satellite-3d {
+      grid-column: span 4;
+      grid-row: span 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .satellite-model {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
+      animation: satelliteRotate 10s linear infinite;
+    }
+
+    .orbit-ring {
+      position: absolute;
+      border: 2px solid rgba(0, 255, 157, 0.3);
+      border-radius: 50%;
+      animation: orbitRotate 15s linear infinite;
+    }
+
+    .orbit-ring:nth-child(1) {
+      width: 200px;
+      height: 200px;
+      top: -40px;
+      left: -40px;
+    }
+
+    .orbit-ring:nth-child(2) {
+      width: 160px;
+      height: 160px;
+      top: -20px;
+      left: -20px;
+      animation-duration: 20s;
+      animation-direction: reverse;
+    }
+
+    .orbit-ring:nth-child(3) {
+      width: 120px;
+      height: 120px;
+      top: 0;
+      left: 0;
+      animation-duration: 25s;
+    }
+
+    @keyframes satelliteRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes orbitRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Hardware Assessment Grid */
+    .hardware-grid {
+      grid-column: span 8;
+      grid-row: span 2;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+      padding: 0.5rem;
+    }
+
+    .hardware-card {
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 0.75rem;
+      text-align: center;
+      border: 1px solid var(--border);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .hardware-card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px var(--shadow-hover);
+    }
+
+    .hardware-safe {
+      border-color: #22c55e;
+      background: rgba(34, 197, 94, 0.1);
+    }
+
+    .hardware-warning {
+      border-color: #eab308;
+      background: rgba(234, 179, 8, 0.1);
+    }
+
+    .hardware-danger {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .hardware-name {
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--primary);
+    }
+
+    .hardware-status {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .hardware-health {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .health-bar {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 0.25rem;
+    }
+
+    .health-fill {
+      height: 100%;
+      transition: width 0.5s ease;
+      border-radius: 2px;
+    }
+
+    .health-safe { background: #22c55e; }
+    .health-warning { background: #eab308; }
+    .health-danger { background: #ef4444; }
+
+    /* Timer Styles */
+    .timer-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+    }
+
+    .timer-display {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .countdown {
+      font-size: 1rem;
+      color: var(--primary);
+      text-shadow: 0 0 6px rgba(0, 255, 157, 0.3);
+      font-weight: 700;
+    }
+
+    .timer-controls {
+      display: flex;
+      gap: 0.25rem;
+      justify-content: center;
+    }
+
+    .timer-btn {
+      padding: 0.25rem 0.5rem;
+      border: none;
+      border-radius: 0.25rem;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+    }
+
+    .timer-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .timer-btn.start { background: var(--primary); }
+    .timer-btn.start:hover:not(:disabled) { background: var(--primary-dark); }
+    .timer-btn.stop { background: #dc2626; }
+    .timer-btn.stop:hover:not(:disabled) { background: #b91c1c; }
+    .timer-btn.reset { background: #ca8a04; }
+    .timer-btn.reset:hover:not(:disabled) { background: #a16207; }
+
+    /* Chart Container */
+    .chart-container {
+      height: 60px;
+      margin-top: 0.5rem;
+    }
+
+    /* Debug Panel */
+    .debug-panel {
+      position: fixed;
+      bottom: 1rem;
+      left: 1rem;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-size: 0.75rem;
+      max-width: 300px;
+      z-index: 1000;
+    }
+
+    .debug-title {
+      color: var(--primary);
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .debug-controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .debug-btn {
+      padding: 0.25rem 0.5rem;
+      border: 1px solid var(--primary);
+      background: transparent;
+      color: var(--primary);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+    }
+
+    .debug-btn:hover {
+      background: var(--primary);
+      color: var(--bg-dark);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 1200px) {
+      .dashboard {
+        grid-template-columns: repeat(4, 1fr);
+        grid-template-rows: repeat(8, 1fr);
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+      
+      .map-container, .satellite-3d {
+        grid-column: span 2;
+        grid-row: span 2;
+      }
+      
+      .hardware-grid {
+        grid-column: span 4;
+        grid-row: span 3;
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .dashboard {
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(12, 1fr);
+        padding: 0.25rem;
+        gap: 0.25rem;
+      }
+      
+      .map-container, .satellite-3d, .hardware-grid {
+        grid-column: span 2;
+      }
+      
+      .hardware-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      
+      .metric {
+        font-size: 1.2rem;
+      }
+      
+      .connection-status, .debug-panel {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="particles-js"></div>
+  
+  <!-- Connection Status Indicator -->
+  <div id="connection-status" class="connection-status status-bg-offline">
+    <div id="connection-indicator" class="connection-indicator" style="background: #6b7280;"></div>
+    <span id="connection-text">Connecting...</span>
+  </div>
+
+  <!-- Debug Panel -->
+  <div id="debug-panel" class="debug-panel" style="display: none;">
+    <div class="debug-title">Debug Panel</div>
+    <div id="debug-info">
+      <div>API Status: <span id="api-status">Unknown</span></div>
+      <div>Last Update: <span id="last-update">Never</span></div>
+      <div>Records: <span id="record-count">0</span></div>
+      <div>Mode: <span id="data-mode">Initializing</span></div>
+    </div>
+    <div class="debug-controls">
+      <button id="test-insert" class="debug-btn">Insert Test Data</button>
+      <button id="toggle-debug" class="debug-btn">Hide Debug</button>
+    </div>
+  </div>
+  
+  <div class="dashboard">
+    <!-- Row 1: Metric Cards -->
+    <div class="card" id="temperature-card">
+      <div class="card-header">
+        <span class="card-title">Temperature</span>
+        <i data-lucide="thermometer" class="icon"></i>
+      </div>
+      <div class="metric" id="temperature">--°C</div>
+      <div class="chart-container" id="temp-chart-container" style="display: none;">
+        <canvas id="tempChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card" id="altitude-card">
+      <div class="card-header">
+        <span class="card-title">Humidity</span>
+        <i data-lucide="droplets" class="icon"></i>
+      </div>
+      <div class="metric" id="humidity">--<span class="unit">%</span></div>
+      <div class="chart-container" id="alt-chart-container" style="display: none;">
+        <canvas id="altChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card" id="pressure-card">
+      <div class="card-header">
+        <span class="card-title">Pressure</span>
+        <i data-lucide="gauge" class="icon"></i>
+      </div>
+      <div class="metric" id="pressure">--<span class="unit">hPa</span></div>
+      <div class="chart-container" id="press-chart-container" style="display: none;">
+        <canvas id="pressChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card" id="angle-card">
+      <div class="card-header">
+        <span class="card-title">Sensor ID</span>
+        <i data-lucide="cpu" class="icon"></i>
+      </div>
+      <div class="metric" id="sensor-id" style="font-size: 1rem;">--</div>
+      <div class="chart-container" id="angle-chart-container" style="display: none;">
+        <canvas id="angleChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Balloon Status Card -->
+    <div class="card" id="balloon-status-card">
+      <div class="card-header">
+        <span class="card-title">System Status</span>
+        <div id="balloon-icon" class="status-offline" style="font-size: 1.2rem;">🔌</div>
+      </div>
+      <div class="metric" id="balloon-status">Connecting...</div>
+      <div id="balloon-pulse" class="status-offline" style="width: 8px; height: 8px; border-radius: 50%; margin-top: 0.5rem; animation: pulse 2s infinite;"></div>
+    </div>
+
+    <!-- Data Source Indicator -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Data Source</span>
+        <i data-lucide="database" class="icon"></i>
+      </div>
+      <div class="metric" id="data-source" style="font-size: 1rem;">Initializing</div>
+    </div>
+
+    <!-- Record Count -->
+    <div class="card" id="stability-card">
+      <div class="card-header">
+        <span class="card-title">Records</span>
+        <i data-lucide="activity" class="icon"></i>
+      </div>
+      <div class="metric" id="record-count-display">0</div>
+    </div>
+
+    <!-- Mission Timer -->
+    <div class="card">
+      <div class="timer-container">
+        <div class="card-header">
+          <span class="card-title">Mission Timer</span>
+          <i data-lucide="timer" class="icon"></i>
+        </div>
+        <div class="timer-display">
+          <div class="countdown" id="countdown">05:55:25</div>
+        </div>
+        <div class="timer-controls">
+          <button id="startBtn" class="timer-btn start">Start</button>
+          <button id="stopBtn" class="timer-btn stop" disabled>Stop</button>
+          <button id="resetBtn" class="timer-btn reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2-3: Map and 3D Satellite -->
+    <div class="card map-container">
+      <div class="card-header">
+        <span class="card-title">Live Location & Prediction</span>
+        <i data-lucide="map-pin" class="icon"></i>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <div class="card satellite-3d">
+      <div class="card-header">
+        <span class="card-title">3D Satellite Position</span>
+        <i data-lucide="satellite" class="icon"></i>
+      </div>
+      <div class="satellite-model">
+        <div class="orbit-ring"></div>
+        <div class="orbit-ring"></div>
+        <div class="orbit-ring"></div>
+        🛰️
+      </div>
+      <div style="position: absolute; bottom: 1rem; left: 1rem; font-size: 0.7rem; color: var(--primary);">
+        <div>Last Update: <span id="last-update-time">Never</span></div>
+        <div>Data Age: <span id="data-age">--</span></div>
+      </div>
+    </div>
+
+    <!-- Row 4-5: Hardware Assessment -->
+    <div class="card" style="grid-column: span 8; grid-row: span 2;">
+      <div class="card-header">
+        <span class="card-title">API Statistics</span>
+        <i data-lucide="bar-chart" class="icon"></i>
+      </div>
+      <div class="hardware-grid" id="stats-grid">
+        <!-- Stats cards will be generated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // API Configuration and Global Variables
+    // ============================================================================
+    
+    const API_BASE_URL = 'http://localhost:5000/api';
+    const UPDATE_INTERVAL = 3000; // 3 seconds
+    const FALLBACK_TIMEOUT = 10000; // 10 seconds before switching to fallback
+    
+    let apiConnected = false;
+    let dataMode = 'initializing'; // 'api', 'fallback', 'initializing'
+    let lastApiSuccess = null;
+    let apiStats = {
+      totalRecords: 0,
+      avgTemperature: null,
+      avgHumidity: null,
+      avgPressure: null,
+      latestTimestamp: null
+    };
+
+    // Particles.js configuration
+    const particlesConfig = {
+      particles: {
+        number: { value: 50, density: { enable: true, value_area: 800 } },
+        color: { value: "#00ff9d" },
+        shape: { type: "circle" },
+        opacity: { value: 0.3, random: true },
+        size: { value: 2, random: true },
+        line_linked: {
+          enable: true,
+          distance: 150,
+          color: "#00ff9d",
+          opacity: 0.2,
+          width: 1
+        },
+        move: {
+          enable: true,
+          speed: 0.5,
+          direction: "none",
+          random: true,
+          straight: false,
+          out_mode: "out",
+          bounce: false
+        }
+      },
+      interactivity: {
+        detect_on: "canvas",
+        events: {
+          onhover: { enable: true, mode: "grab" },
+          onclick: { enable: true, mode: "push" },
+          resize: true
+        },
+        modes: {
+          grab: { distance: 140, line_linked: { opacity: 1 } },
+          push: { particles_nb: 4 }
+        }
+      },
+      retina_detect: true
+    };
+
+    // Global variables
+    let map, marker, predictionMarker, predictionPath;
+    let charts = {};
+    let metricData = {
+      temperature: { values: [], timestamps: [] },
+      humidity: { values: [], timestamps: [] },
+      pressure: { values: [], timestamps: [] }
+    };
+    let currentValues = {
+      temperature: null,
+      humidity: null,
+      pressure: null,
+      sensor_id: null,
+      timestamp: null,
+      coordinates: { lat: 51.5074, lon: -0.1278 }
+    };
+    let timer = { hours: 5, minutes: 55, seconds: 25 };
+    let isTimerRunning = false;
+    let timerInterval = null;
+    let selectedMetric = null;
+    let satelliteRotation = 0;
+
+    // ============================================================================
+    // API Functions
+    // ============================================================================
+
+    async function testApiConnection() {
+      try {
+        console.log('Testing API connection...');
+        const response = await fetch(`${API_BASE_URL}/../`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('API Connection Test Success:', result);
+        return true;
+      } catch (error) {
+        console.error('API connection test failed:', error);
+        return false;
+      }
+    }
+
+    async function fetchTelemetryData() {
+      try {
+        console.log('Fetching telemetry data...');
+        const response = await fetch(`${API_BASE_URL}/telemetry/latest`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Telemetry data received:', result);
+        
+        if (result.success && result.data && result.data.length > 0) {
+          const latestData = result.data[0];
+          return {
+            temperature: latestData.temperature,
+            humidity: latestData.humidity,
+            pressure: latestData.pressure,
+            sensor_id: latestData.sensor_id,
+            timestamp: latestData.timestamp,
+            id: latestData.id,
+            recordCount: result.count
+          };
+        } else {
+          console.log('No data available from API');
+          return null;
+        }
+        
+      } catch (error) {
+        console.error('Error fetching telemetry data:', error);
+        return null;
+      }
+    }
+
+    async function fetchApiStats() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/telemetry/stats`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          apiStats = result.stats;
+          updateStatsDisplay();
+        }
+        
+      } catch (error) {
+        console.error('Error fetching API stats:', error);
+      }
+    }
+
+    async function insertTestData() {
+      const testData = {
+        temperature: Math.random() * 40 + 10, // 10-50°C
+        humidity: Math.random() * 100,        // 0-100%
+        pressure: Math.random() * 200 + 900,  // 900-1100 hPa
+        sensor_id: 'web_dashboard_test'
+      };
+      
+      try {
+        console.log('Inserting test data:', testData);
+        const response = await fetch(`${API_BASE_URL}/telemetry/insert`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(testData)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Test data inserted successfully:', result);
+        
+        // Refresh data immediately
+        await updateTelemetryData();
+        
+        return true;
+      } catch (error) {
+        console.error('Error inserting test data:', error);
+        return false;
+      }
+    }
+
+    // ============================================================================
+    // Fallback Data Generation
+    // ============================================================================
+
+    function generateFallbackData() {
+      return {
+        temperature: Math.random() * 40 + 10,
+        humidity: Math.random() * 100,
+        pressure: Math.random() * 200 + 900,
+        sensor_id: 'fallback_sim',
+        timestamp: new Date().toISOString(),
+        recordCount: 0
+      };
+    }
+
+    // ============================================================================
+    // Data Update Functions
+    // ============================================================================
+
+    async function updateTelemetryData() {
+      const now = new Date();
+      let data = null;
+      
+      // Try to fetch from API first
+      if (dataMode !== 'fallback') {
+        data = await fetchTelemetryData();
+        
+        if (data) {
+          apiConnected = true;
+          lastApiSuccess = now;
+          dataMode = 'api';
+          updateConnectionStatus('connected');
+        } else {
+          apiConnected = false;
+          // Switch to fallback if API has been failing for too long
+          if (lastApiSuccess && (now - lastApiSuccess) > FALLBACK_TIMEOUT) {
+            dataMode = 'fallback';
+            updateConnectionStatus('fallback');
+          } else {
+            updateConnectionStatus('error');
+          }
+        }
+      }
+      
+      // Use fallback data if API failed or we're in fallback mode
+      if (!data) {
+        data = generateFallbackData();
+      }
+      
+      // Update current values
+      currentValues = {
+        ...data,
+        coordinates: {
+          lat: currentValues.coordinates.lat + (Math.random() - 0.5) * 0.001,
+          lon: currentValues.coordinates.lon + (Math.random() - 0.5) * 0.001
+        }
+      };
+      
+      // Update displays
+      updateMetricDisplays(data);
+      updateMetricHistory(data, now);
+      updateMap();
+      updateDebugInfo(now);
+      
+      // Update selected chart if any
+      if (selectedMetric) {
+        updateChart(selectedMetric);
+      }
+      
+      // Fetch stats periodically when connected
+      if (apiConnected && Math.random() < 0.3) {
+        await fetchApiStats();
+      }
+    }
+
+    function updateMetricDisplays(data) {
+      // Update temperature
+      const tempEl = document.getElementById('temperature');
+      if (tempEl) {
+        tempEl.textContent = data.temperature ? `${data.temperature.toFixed(1)}°C` : '--°C';
+      }
+      
+      // Update humidity
+      const humidityEl = document.getElementById('humidity');
+      if (humidityEl) {
+        humidityEl.innerHTML = data.humidity ? `${data.humidity.toFixed(1)}<span class="unit">%</span>` : '--<span class="unit">%</span>';
+      }
+      
+      // Update pressure
+      const pressureEl = document.getElementById('pressure');
+      if (pressureEl) {
+        pressureEl.innerHTML = data.pressure ? `${Math.floor(data.pressure)}<span class="unit">hPa</span>` : '--<span class="unit">hPa</span>';
+      }
+      
+      // Update sensor ID
+      const sensorIdEl = document.getElementById('sensor-id');
+      if (sensorIdEl) {
+        sensorIdEl.textContent = data.sensor_id || '--';
+      }
+      
+      // Update record count
+      const recordCountEl = document.getElementById('record-count-display');
+      if (recordCountEl) {
+        recordCountEl.textContent = data.recordCount || '0';
+      }
+      
+      // Update data source
+      const dataSourceEl = document.getElementById('data-source');
+      if (dataSourceEl) {
+        dataSourceEl.textContent = dataMode === 'api' ? 'Database' : dataMode === 'fallback' ? 'Simulation' : 'Connecting';
+      }
+      
+      // Update system status
+      updateSystemStatus();
+    }
+
+    function updateMetricHistory(data, timestamp) {
+      const timeString = timestamp.toLocaleTimeString();
+      
+      // Update temperature history
+      if (data.temperature !== null && data.temperature !== undefined) {
+        metricData.temperature.values.push(data.temperature);
+        metricData.temperature.timestamps.push(timeString);
+        
+        if (metricData.temperature.values.length > 20) {
+          metricData.temperature.values.shift();
+          metricData.temperature.timestamps.shift();
+        }
+      }
+      
+      // Update humidity history
+      if (data.humidity !== null && data.humidity !== undefined) {
+        metricData.humidity.values.push(data.humidity);
+        metricData.humidity.timestamps.push(timeString);
+        
+        if (metricData.humidity.values.length > 20) {
+          metricData.humidity.values.shift();
+          metricData.humidity.timestamps.shift();
+        }
+      }
+      
+      // Update pressure history
+      if (data.pressure !== null && data.pressure !== undefined) {
+        metricData.pressure.values.push(data.pressure);
+        metricData.pressure.timestamps.push(timeString);
+        
+        if (metricData.pressure.values.length > 20) {
+          metricData.pressure.values.shift();
+          metricData.pressure.timestamps.shift();
+        }
+      }
+    }
+
+    function updateSystemStatus() {
+      const statusElement = document.getElementById('balloon-status');
+      const iconElement = document.getElementById('balloon-icon');
+      const pulseElement = document.getElementById('balloon-pulse');
+      const cardElement = document.getElementById('balloon-status-card');
+      
+      let status, statusClass, icon;
+      
+      if (dataMode === 'api') {
+        status = 'Connected';
+        statusClass = 'safe';
+        icon = '✅';
+      } else if (dataMode === 'fallback') {
+        status = 'Simulation Mode';
+        statusClass = 'warning';
+        icon = '⚠️';
+      } else {
+        status = 'Connecting...';
+        statusClass = 'offline';
+        icon = '🔌';
+      }
+      
+      if (statusElement) {
+        statusElement.textContent = status;
+        statusElement.className = `metric status-${statusClass}`;
+      }
+      if (iconElement) {
+        iconElement.className = `status-${statusClass}`;
+        iconElement.textContent = icon;
+      }
+      if (pulseElement) {
+        pulseElement.className = `status-${statusClass}`;
+        pulseElement.style.backgroundColor = statusClass === 'safe' ? '#22c55e' : statusClass === 'warning' ? '#eab308' : '#6b7280';
+      }
+      if (cardElement) {
+        cardElement.className = `card status-bg-${statusClass}`;
+      }
+    }
+
+    function updateConnectionStatus(status) {
+      const statusEl = document.getElementById('connection-status');
+      const indicatorEl = document.getElementById('connection-indicator');
+      const textEl = document.getElementById('connection-text');
+      
+      if (!statusEl || !indicatorEl || !textEl) return;
+      
+      switch (status) {
+        case 'connected':
+          statusEl.className = 'connection-status status-bg-safe';
+          indicatorEl.style.background = '#22c55e';
+          textEl.textContent = 'API Connected';
+          break;
+        case 'fallback':
+          statusEl.className = 'connection-status status-bg-warning';
+          indicatorEl.style.background = '#eab308';
+          textEl.textContent = 'Simulation Mode';
+          break;
+        case 'error':
+          statusEl.className = 'connection-status status-bg-danger';
+          indicatorEl.style.background = '#ef4444';
+          textEl.textContent = 'Connection Error';
+          break;
+        default:
+          statusEl.className = 'connection-status status-bg-offline';
+          indicatorEl.style.background = '#6b7280';
+          textEl.textContent = 'Connecting...';
+      }
+    }
+
+    function updateDebugInfo(timestamp) {
+      const apiStatusEl = document.getElementById('api-status');
+      const lastUpdateEl = document.getElementById('last-update');
+      const recordCountEl = document.getElementById('record-count');
+      const dataModeEl = document.getElementById('data-mode');
+      
+      if (apiStatusEl) {
+        apiStatusEl.textContent = apiConnected ? 'Connected' : 'Disconnected';
+        apiStatusEl.className = apiConnected ? 'status-safe' : 'status-danger';
+      }
+      
+      if (lastUpdateEl) {
+        lastUpdateEl.textContent = timestamp.toLocaleTimeString();
+      }
+      
+      if (recordCountEl) {
+        recordCountEl.textContent = currentValues.recordCount || '0';
+      }
+      
+      if (dataModeEl) {
+        dataModeEl.textContent = dataMode.charAt(0).toUpperCase() + dataMode.slice(1);
+        dataModeEl.className = dataMode === 'api' ? 'status-safe' : dataMode === 'fallback' ? 'status-warning' : 'status-offline';
+      }
+      
+      // Update last update time in satellite section
+      const lastUpdateTimeEl = document.getElementById('last-update-time');
+      if (lastUpdateTimeEl) {
+        lastUpdateTimeEl.textContent = timestamp.toLocaleTimeString();
+      }
+      
+      // Update data age
+      const dataAgeEl = document.getElementById('data-age');
+      if (dataAgeEl && currentValues.timestamp) {
+        const dataTime = new Date(currentValues.timestamp);
+        const ageMs = timestamp - dataTime;
+        const ageSeconds = Math.floor(ageMs / 1000);
+        dataAgeEl.textContent = ageSeconds < 60 ? `${ageSeconds}s` : `${Math.floor(ageSeconds / 60)}m`;
+      }
+    }
+
+    function updateStatsDisplay() {
+      const statsGrid = document.getElementById('stats-grid');
+      if (!statsGrid) return;
+      
+      statsGrid.innerHTML = '';
+      
+      const stats = [
+        { name: 'Total Records', value: apiStats.totalRecords || 0, unit: '', status: 'safe' },
+        { name: 'Avg Temperature', value: apiStats.avgTemperature?.toFixed(1) || '--', unit: '°C', status: 'safe' },
+        { name: 'Avg Humidity', value: apiStats.avgHumidity?.toFixed(1) || '--', unit: '%', status: 'safe' },
+        { name: 'Avg Pressure', value: apiStats.avgPressure?.toFixed(1) || '--', unit: 'hPa', status: 'safe' },
+        { name: 'API Status', value: apiConnected ? 'Online' : 'Offline', unit: '', status: apiConnected ? 'safe' : 'danger' },
+        { name: 'Data Mode', value: dataMode.charAt(0).toUpperCase() + dataMode.slice(1), unit: '', status: dataMode === 'api' ? 'safe' : 'warning' },
+        { name: 'Last Sync', value: lastApiSuccess ? lastApiSuccess.toLocaleTimeString() : 'Never', unit: '', status: lastApiSuccess ? 'safe' : 'warning' }
+      ];
+      
+      stats.forEach(stat => {
+        const card = document.createElement('div');
+        card.className = `hardware-card hardware-${stat.status}`;
+        card.innerHTML = `
+          <div class="hardware-name">${stat.name}</div>
+          <div class="hardware-status ${stat.status === 'safe' ? 'status-safe' : stat.status === 'warning' ? 'status-warning' : 'status-danger'}">
+            ${stat.status === 'safe' ? '✓' : stat.status === 'warning' ? '⚠' : '✗'}
+          </div>
+          <div class="hardware-health ${stat.status === 'safe' ? 'status-safe' : stat.status === 'warning' ? 'status-warning' : 'status-danger'}">
+            ${stat.value}${stat.unit}
+          </div>
+          <div class="health-bar">
+            <div class="health-fill health-${stat.status}" style="width: ${stat.status === 'safe' ? '100' : stat.status === 'warning' ? '60' : '20'}%"></div>
+          </div>
+          <div style="font-size: 0.6rem; text-transform: uppercase; font-weight: 600;" class="${stat.status === 'safe' ? 'status-safe' : stat.status === 'warning' ? 'status-warning' : 'status-danger'}">
+            ${stat.status}
+          </div>
+        `;
+        statsGrid.appendChild(card);
+      });
+    }
+
+    // ============================================================================
+    // Map Functions
+    // ============================================================================
+
+    function initializeMap() {
+      map = L.map('map').setView([currentValues.coordinates.lat, currentValues.coordinates.lon], 10);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      marker = L.marker([currentValues.coordinates.lat, currentValues.coordinates.lon])
+        .addTo(map)
+        .bindPopup('Current Position');
+
+      // Add prediction marker
+      const predLat = currentValues.coordinates.lat + 0.01;
+      const predLon = currentValues.coordinates.lon + 0.01;
+      predictionMarker = L.marker([predLat, predLon], {
+        icon: L.divIcon({
+          className: 'prediction-marker',
+          html: '<div style="background: #ff6b6b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
+          iconSize: [16, 16]
+        })
+      }).addTo(map).bindPopup('Predicted Landing');
+
+      // Add prediction path
+      predictionPath = L.polyline([
+        [currentValues.coordinates.lat, currentValues.coordinates.lon],
+        [predLat, predLon]
+      ], {
+        color: '#00ff9d',
+        weight: 3,
+        opacity: 0.7,
+        dashArray: '10, 10'
+      }).addTo(map);
+    }
+
+    function updateMap() {
+      if (marker && map) {
+        marker.setLatLng([currentValues.coordinates.lat, currentValues.coordinates.lon]);
+        
+        // Only center map occasionally to avoid constant movement
+        if (Math.random() < 0.1) {
+          map.setView([currentValues.coordinates.lat, currentValues.coordinates.lon], 10);
+        }
+
+        // Update prediction path
+        const predLat = currentValues.coordinates.lat + 0.01;
+        const predLon = currentValues.coordinates.lon + 0.01;
+        if (predictionMarker) predictionMarker.setLatLng([predLat, predLon]);
+        if (predictionPath) {
+          predictionPath.setLatLngs([
+            [currentValues.coordinates.lat, currentValues.coordinates.lon],
+            [predLat, predLon]
+          ]);
+        }
+      }
+    }
+
+    // ============================================================================
+    // Chart Functions
+    // ============================================================================
+
+    function initializeCharts() {
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#00ff9d',
+            bodyColor: '#00ff9d',
+            borderColor: 'rgba(0, 255, 157, 0.2)',
+            borderWidth: 1
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#00ff9d', font: { size: 8 } },
+            grid: { color: 'rgba(0, 255, 157, 0.1)' }
+          },
+          y: {
+            ticks: { color: '#00ff9d', font: { size: 8 } },
+            grid: { color: 'rgba(0, 255, 157, 0.1)' }
+          }
+        }
+      };
+
+      // Initialize charts for each metric
+      ['temp', 'alt', 'press'].forEach((metric, index) => {
+        const canvas = document.getElementById(`${metric}Chart`);
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          const dataKey = metric === 'temp' ? 'temperature' : metric === 'alt' ? 'humidity' : 'pressure';
+          charts[dataKey] = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: [],
+              datasets: [{
+                data: [],
+                borderColor: '#00ff9d',
+                backgroundColor: 'rgba(0, 255, 157, 0.2)',
+                borderWidth: 2,
+                pointRadius: 1,
+                tension: 0.4,
+                fill: true
+              }]
+            },
+            options: chartOptions
+          });
+        }
+      });
+    }
+
+    function toggleMetricChart(metric) {
+      const chartMappings = {
+        'temperature': 'temp',
+        'humidity': 'alt',
+        'pressure': 'press'
+      };
+      
+      const chartKey = chartMappings[metric];
+      const chartContainer = document.getElementById(`${chartKey}-chart-container`);
+      const metricElement = document.getElementById(metric);
+      
+      if (selectedMetric === metric) {
+        // Hide chart and return metric to normal
+        if (chartContainer) chartContainer.style.display = 'none';
+        if (metricElement) metricElement.classList.remove('enlarged');
+        selectedMetric = null;
+      } else {
+        // Hide all other charts first
+        Object.keys(chartMappings).forEach(m => {
+          const container = document.getElementById(`${chartMappings[m]}-chart-container`);
+          if (container) container.style.display = 'none';
+          const el = document.getElementById(m);
+          if (el) el.classList.remove('enlarged');
+        });
+        
+        // Show selected chart and enlarge metric
+        if (chartContainer) chartContainer.style.display = 'block';
+        if (metricElement) metricElement.classList.add('enlarged');
+        selectedMetric = metric;
+        
+        // Update chart data
+        updateChart(metric);
+      }
+    }
+
+    function updateChart(metric) {
+      if (charts[metric] && metricData[metric]) {
+        charts[metric].data.labels = metricData[metric].timestamps;
+        charts[metric].data.datasets[0].data = metricData[metric].values;
+        charts[metric].update();
+      }
+    }
+
+    // ============================================================================
+    // Timer Functions
+    // ============================================================================
+
+    function initializeTimer() {
+      updateTimerDisplay();
+    }
+
+    function startTimer() {
+      if (!isTimerRunning && (timer.hours > 0 || timer.minutes > 0 || timer.seconds > 0)) {
+        isTimerRunning = true;
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        if (startBtn) startBtn.disabled = true;
+        if (stopBtn) stopBtn.disabled = false;
+        
+        timerInterval = setInterval(() => {
+          if (timer.seconds > 0) {
+            timer.seconds--;
+          } else if (timer.minutes > 0) {
+            timer.minutes--;
+            timer.seconds = 59;
+          } else if (timer.hours > 0) {
+            timer.hours--;
+            timer.minutes = 59;
+            timer.seconds = 59;
+          } else {
+            stopTimer();
+          }
+          updateTimerDisplay();
+        }, 1000);
+      }
+    }
+
+    function stopTimer() {
+      isTimerRunning = false;
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      if (startBtn) startBtn.disabled = false;
+      if (stopBtn) stopBtn.disabled = true;
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function resetTimer() {
+      stopTimer();
+      timer = { hours: 5, minutes: 55, seconds: 25 };
+      updateTimerDisplay();
+    }
+
+    function updateTimerDisplay() {
+      const display = document.getElementById('countdown');
+      if (display) {
+        display.textContent = `${String(timer.hours).padStart(2, '0')}:${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`;
+      }
+    }
+
+    // ============================================================================
+    // Event Listeners
+    // ============================================================================
+
+    function initializeEventListeners() {
+      // Metric card clicks
+      ['temperature', 'humidity', 'pressure'].forEach(metric => {
+        const card = document.getElementById(`${metric}-card`);
+        if (card) {
+          card.addEventListener('click', () => {
+            toggleMetricChart(metric);
+          });
+        }
+      });
+
+      // Timer controls
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      
+      if (startBtn) startBtn.addEventListener('click', startTimer);
+      if (stopBtn) stopBtn.addEventListener('click', stopTimer);
+      if (resetBtn) resetBtn.addEventListener('click', resetTimer);
+
+      // Debug panel controls
+      const testInsertBtn = document.getElementById('test-insert');
+      const toggleDebugBtn = document.getElementById('toggle-debug');
+      
+      if (testInsertBtn) {
+        testInsertBtn.addEventListener('click', async () => {
+          testInsertBtn.disabled = true;
+          testInsertBtn.textContent = 'Inserting...';
+          
+          const success = await insertTestData();
+          
+          testInsertBtn.disabled = false;
+          testInsertBtn.textContent = success ? 'Success!' : 'Failed';
+          
+          setTimeout(() => {
+            testInsertBtn.textContent = 'Insert Test Data';
+          }, 2000);
+        });
+      }
+      
+      if (toggleDebugBtn) {
+        toggleDebugBtn.addEventListener('click', () => {
+          const debugPanel = document.getElementById('debug-panel');
+          if (debugPanel) {
+            const isVisible = debugPanel.style.display !== 'none';
+            debugPanel.style.display = isVisible ? 'none' : 'block';
+            toggleDebugBtn.textContent = isVisible ? 'Show Debug' : 'Hide Debug';
+          }
+        });
+      }
+
+      // Double-click to show debug panel
+      document.addEventListener('dblclick', (e) => {
+        if (e.ctrlKey) {
+          const debugPanel = document.getElementById('debug-panel');
+          if (debugPanel) {
+            debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+      });
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'd') {
+          e.preventDefault();
+          const debugPanel = document.getElementById('debug-panel');
+          if (debugPanel) {
+            debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+        
+        if (e.ctrlKey && e.key === 't') {
+          e.preventDefault();
+          insertTestData();
+        }
+      });
+    }
+
+    // ============================================================================
+    // Initialization
+    // ============================================================================
+
+    document.addEventListener('DOMContentLoaded', async function() {
+      console.log('Dashboard initializing...');
+      
+      // Initialize particles.js
+      if (window.particlesJS) {
+        window.particlesJS('particles-js', particlesConfig);
+      }
+
+      // Initialize Lucide icons
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+
+      // Initialize components
+      initializeMap();
+      initializeCharts();
+      initializeEventListeners();
+      initializeTimer();
+      updateStatsDisplay();
+
+      // Test API connection
+      console.log('Testing initial API connection...');
+      updateConnectionStatus('connecting');
+      
+      const apiConnected = await testApiConnection();
+      if (apiConnected) {
+        console.log('API connected successfully');
+        dataMode = 'api';
+        lastApiSuccess = new Date();
+      } else {
+        console.log('API not available, will retry...');
+        dataMode = 'initializing';
+      }
+
+      // Start data updates
+      console.log('Starting data update interval...');
+      updateTelemetryData(); // Initial update
+      setInterval(updateTelemetryData, UPDATE_INTERVAL);
+      
+      // Satellite animation
+      setInterval(() => {
+        satelliteRotation = (satelliteRotation + 2) % 360;
+      }, 100);
+
+      console.log('Dashboard initialization complete');
+      console.log('Keyboard shortcuts:');
+      console.log('  Ctrl+D: Toggle debug panel');
+      console.log('  Ctrl+T: Insert test data');
+      console.log('  Ctrl+Double-click: Toggle debug panel');
+    });
+
+    // ============================================================================
+    // Global Error Handling
+    // ============================================================================
+
+    window.addEventListener('error', (e) => {
+      console.error('Global error:', e.error);
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled promise rejection:', e.reason);
+    });
+
+    // Export functions for debugging (attach to window)
+    window.telemetryDebug = {
+      testApi: testApiConnection,
+      insertTest: insertTestData,
+      fetchData: fetchTelemetryData,
+      fetchStats: fetchApiStats,
+      currentValues,
+      apiStats,
+      dataMode,
+      apiConnected
+    };
+
+    console.log('Telemetry Debug functions available at window.telemetryDebug');
+  </script>
+</body>
+</html>
